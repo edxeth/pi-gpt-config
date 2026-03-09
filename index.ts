@@ -1,3 +1,6 @@
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder, getSettingsListTheme } from "@mariozechner/pi-coding-agent";
 import { Container, type SettingItem, SettingsList, Text, wrapTextWithAnsi } from "@mariozechner/pi-tui";
@@ -10,8 +13,9 @@ interface GPTConfigState {
 	fastMode: boolean;
 }
 
-const STATE_TYPE = "gpt-config-state";
 const STATUS_KEY = "gpt-config";
+const AGENT_DIR = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
+const STATE_FILE = join(AGENT_DIR, "cache", "pi-gpt-config", "state.json");
 
 const DEFAULT_STATE: GPTConfigState = {
 	personality: "none",
@@ -49,22 +53,27 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 		};
 	}
 
-	function restoreState(ctx: ExtensionContext) {
-		const branchEntries = ctx.sessionManager.getBranch();
-		let restored: GPTConfigState | undefined;
-
-		for (const entry of branchEntries) {
-			if (entry.type === "custom" && entry.customType === STATE_TYPE) {
-				restored = normalizeState(entry.data);
-			}
+	function readGlobalState(): GPTConfigState {
+		try {
+			const raw = readFileSync(STATE_FILE, "utf8");
+			return normalizeState(JSON.parse(raw));
+		} catch {
+			return { ...DEFAULT_STATE };
 		}
+	}
 
-		state = restored ?? { ...DEFAULT_STATE };
+	function restoreState(ctx: ExtensionContext) {
+		state = readGlobalState();
 		updateStatus(ctx);
 	}
 
 	function persistState() {
-		pi.appendEntry<GPTConfigState>(STATE_TYPE, state);
+		try {
+			mkdirSync(dirname(STATE_FILE), { recursive: true });
+			writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), "utf8");
+		} catch {
+			// Ignore persistence failures; runtime state still applies for this session.
+		}
 	}
 
 	function formatPersonality(value: Personality): string {
@@ -111,9 +120,17 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 		return "Fast mode enabled but ignored for the current model/provider.";
 	}
 
+	function shouldShowStatus(model: Model<any> | undefined): boolean {
+		return model?.id === "gpt-5.4";
+	}
+
 	function updateStatus(ctx: ExtensionContext) {
-		const fast = state.fastMode ? (supportsFastMode(ctx.model) ? "on" : "on*") : "off";
-		ctx.ui.setStatus(STATUS_KEY, `GPT cfg: ${formatPersonality(state.personality)} · fast ${fast}`);
+		if (!shouldShowStatus(ctx.model)) {
+			ctx.ui.setStatus(STATUS_KEY, undefined);
+			return;
+		}
+		const priority = state.fastMode ? "fast" : "none";
+		ctx.ui.setStatus(STATUS_KEY, `personality ${formatPersonality(state.personality)} · priority ${priority}`);
 	}
 
 	function describeState(ctx: ExtensionContext): string[] {

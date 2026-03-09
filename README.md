@@ -63,7 +63,13 @@ Non-interactive subcommands:
 
 ## Persistence
 
-State is stored in the **current pi session branch** using custom session entries.
+State is stored in a **global JSON file** under pi's cache directory:
+
+- `~/.pi/agent/cache/pi-gpt-config/state.json`
+
+If `PI_CODING_AGENT_DIR` is set, the extension uses:
+
+- `$PI_CODING_AGENT_DIR/cache/pi-gpt-config/state.json`
 
 Restoration happens on:
 - initial session load: `session_start`
@@ -73,31 +79,31 @@ Restoration happens on:
 
 Practical behavior:
 - same session: settings persist
-- `/fork`: settings persist into the fork branch state if present there
-- `/tree`: settings follow the selected branch history
-- `/new`: new session restores that session's own state, usually defaults
-- `/resume`: restores the resumed session's saved state
-- pi restart + reopen same session: restores saved state
-- completely fresh session: starts from defaults
+- `/new`: keeps the last saved global config
+- `/resume`: keeps the last saved global config
+- `/fork`: keeps the last saved global config
+- `/tree`: keeps the last saved global config
+- pi restart: restores the last saved global config
+- completely fresh pi launch: restores the last saved global config if `state.json` exists, otherwise defaults
 
-This is **session-scoped persistence**, not global persistence.
+This is now **global persistence**, not session-scoped persistence.
 
 ## TUI behavior
 
 The panel uses pi's native custom UI APIs and `SettingsList`.
-It also shows a footer status summary like:
+On `gpt-5.4`, it also shows a footer status summary like:
 
 ```text
-GPT cfg: friendly · fast on
+personality friendly · priority fast
 ```
 
-If fast mode is enabled but unsupported for the current model, the footer shows:
+If fast mode is disabled, the footer shows:
 
 ```text
-GPT cfg: friendly · fast on*
+personality friendly · priority none
 ```
 
-and the panel explains that the current model/provider ignores it.
+The footer is hidden for models other than `gpt-5.4`.
 
 ## TypeScript / editor support
 
