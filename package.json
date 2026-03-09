@@ -1,0 +1,5 @@
+{
+  "name": "pi-gpt-config",
+  "private": true,
+  "type": "module"
+}
