@@ -548,7 +548,7 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 			};
 		});
 
-		ctx.ui.notify(describeState(ctx).join(" | "), "info");
+		ctx.ui.notify("GPT config updated!", "success");
 	}
 
 	pi.registerCommand("gpt_config", {
