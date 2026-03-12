@@ -1,9 +1,11 @@
 # pi-gpt-config
 
-Adds a `/gpt_config` command to pi for configuring two GPT-oriented behaviors from a TUI panel:
+Adds a `/gpt_config` command to pi for configuring GPT-oriented behaviors from a TUI panel:
 
 - `Personality`: `none`, `friendly`, `pragmatic`
 - `Fast mode`: `on`, `off`
+- `Verbosity`: `low`, `medium`, `high`
+- `Reasoning summary`: `auto`, `concise`, `detailed`
 
 Extension path:
 - `index.ts`
@@ -41,6 +43,64 @@ Fast mode is only sent when the current model looks supported:
 
 Unsupported models are left untouched.
 
+### Verbosity
+
+Verbosity is implemented as **provider payload mutation** using the OpenAI Responses API `text.verbosity` field.
+It controls how expansive the final written answer should be — this is about the surface response the user sees, not the hidden reasoning process.
+
+Values:
+- `low`: short, concise final answers
+- `medium`: balanced output length (API default — no payload modification sent)
+- `high`: longer, more detailed final answers
+
+When set to a non-default value, the extension adds:
+
+```json
+{
+  "text": { "verbosity": "low" }
+}
+```
+
+Verbosity is only sent when:
+- model API is `openai-responses`
+- model id looks like a GPT/Codex-style model
+
+Prompts can still further steer output length on top of this setting.
+
+### Reasoning summary
+
+Reasoning summary is implemented as **provider payload mutation** using the OpenAI Responses API `reasoning.summary` field.
+It controls whether the API returns a summary of the model's reasoning process — this is for visibility into how the model thinks, not about the final answer length.
+
+Values:
+- `auto`: let the API decide whether to include a reasoning summary (API default — no payload modification sent)
+- `concise`: include a brief summary of the model's reasoning
+- `detailed`: include a thorough summary of the model's reasoning
+
+When set to a non-default value, the extension adds:
+
+```json
+{
+  "reasoning": { "summary": "concise" }
+}
+```
+
+Reasoning summary is only sent when:
+- model API is `openai-responses`
+- model id looks like a GPT/Codex/reasoning-style model (GPT, Codex, o-series)
+
+### How verbosity and summary relate
+
+They are complementary and control different things:
+
+- `reasoning.summary` = "Show me how the model reasoned, in summarized form."
+- `text.verbosity` = "How long/detailed should the final answer itself be?"
+
+You can combine them freely. For example:
+- Brief final answer with `verbosity: low`, while still getting a reasoning summary via `summary: concise`
+- Long final answer with `verbosity: high` and no reasoning summary
+- Both, or neither, depending on your use case
+
 ## Command
 
 Open the TUI panel:
@@ -59,6 +119,12 @@ Non-interactive subcommands:
 /gpt_config personality none
 /gpt_config fast on
 /gpt_config fast off
+/gpt_config verbosity low
+/gpt_config verbosity medium
+/gpt_config verbosity high
+/gpt_config summary auto
+/gpt_config summary concise
+/gpt_config summary detailed
 ```
 
 ## Persistence
@@ -94,13 +160,15 @@ The panel uses pi's native custom UI APIs and `SettingsList`.
 On `gpt-5.4`, it also shows a footer status summary like:
 
 ```text
-personality friendly · priority fast
+personality friendly · priority fast · verbosity low · summary concise
 ```
 
-If fast mode is disabled, the footer shows:
+Non-default verbosity and summary values are shown; defaults (`medium` / `auto`) are omitted to keep the status bar clean.
+
+If everything is at defaults, the footer shows:
 
 ```text
-personality friendly · priority none
+personality none · priority none
 ```
 
 The footer is hidden for models other than `gpt-5.4`.
@@ -119,5 +187,6 @@ The local `tsconfig.json` points at pi's globally installed package typings so e
 ## Notes
 
 - Personality is definitely real because it changes the effective system prompt.
-- Fast mode is definitely sent by the extension on supported routes because it mutates the actual outgoing payload.
-- Whether the upstream/provider truly honors `service_tier: "priority"` depends on the proxy/backend, not just this extension.
+- Fast mode, verbosity, and reasoning summary are definitely sent by the extension on supported routes because they mutate the actual outgoing payload.
+- Whether the upstream/provider truly honors `service_tier: "priority"`, `text.verbosity`, or `reasoning.summary` depends on the proxy/backend, not just this extension.
+- The extension safely spreads into existing `text` and `reasoning` objects in the payload, preserving any fields already set by the provider or other extensions (e.g., `reasoning.effort`).
