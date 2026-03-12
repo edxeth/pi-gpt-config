@@ -17,9 +17,9 @@ Outside those two models, every setting in this extension is a **no-op**.
 - `Fast mode` requests OpenAI priority service tier.
 - `Output style` changes answer framing:
   - `codex`: no extra overlay
-  - `claude`: adds a Claude-style concise-output overlay
+  - `claude`: adds a Claude-inspired overlay for more answer-first, concise, lower-overengineering, lower-check-in behavior
 - `Personality` changes tone:
-  - `default`: model's built-in Codex tone
+  - `default`: model's built-in Codex tone with no extra personality overlay
   - `friendly`: warmer, more collaborative
   - `pragmatic`: more direct, factual, compact
 - `Verbosity` controls answer length.
@@ -98,5 +98,7 @@ Persisted key order matches the TUI:
 
 ## Notes
 - This extension mixes native API controls (`service_tier`, `text.verbosity`, `reasoning.summary`) with prompt overlays (`codex` personality blocks and `claude` output style).
-- The `claude` output style is a prompt overlay, not a provider-native Claude mode.
+- `personality=default` / persisted `"none"` now means no extra personality overlay; only explicit `friendly` and `pragmatic` inject tone prompts.
+- The `claude` output style is a Claude-inspired prompt overlay, not a provider-native Claude mode or true Claude parity.
+- The Claude overlay also counter-pressures Codex-style optional check-ins by preferring autonomous continuation until a real blocker or decision appears.
 - Backend support still depends on the upstream provider honoring the request fields.

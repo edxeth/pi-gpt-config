@@ -79,7 +79,7 @@ const CODEX_FRIENDLY_PROMPT = [
 ].join("\n");
 
 const CLAUDE_STYLE_PROMPT = [
-	"# Claude Code Output Style",
+	"# Output efficiency",
 	"",
 	"IMPORTANT: Go straight to the point. Try the simplest approach first without going in circles. Do not overdo it. Be extra concise.",
 	"",
@@ -91,12 +91,29 @@ const CLAUDE_STYLE_PROMPT = [
 	"- Errors or blockers that change the plan",
 	"",
 	"If you can say it in one sentence, don't use three. Prefer short, direct sentences over long explanations. This does not apply to code or tool calls.",
+].join("\n");
+
+const CLAUDE_TASK_DISCIPLINE_PROMPT = [
+	"# Task discipline",
 	"",
-	"Your output to the user should be concise and polished. Avoid using filler words, repetition, or restating what the user has already said. Avoid sharing your thinking or inner monologue in your output — only present the final product of your thoughts to the user. Get to the point quickly, but never omit important information. This does not apply to code or tool calls.",
+	"Avoid over-engineering. Only make changes that are directly requested or clearly necessary. Keep solutions simple and focused.",
+	"Don't create helpers, utilities, or abstractions for one-time operations. Don't design for hypothetical future requirements. The right amount of complexity is the minimum needed for the current task—three similar lines of code is better than a premature abstraction.",
+	"Don't add features, refactor code, or make \"improvements\" beyond what was asked. A bug fix doesn't need surrounding code cleaned up. A simple feature doesn't need extra configurability. Don't add docstrings, comments, or type annotations to code you didn't change. Only add comments where the logic isn't self-evident.",
+	"Don't add error handling, fallbacks, or validation for scenarios that can't happen. Trust internal code and framework guarantees. Only validate at system boundaries (user input, external APIs). Don't use feature flags or backwards-compatibility shims when you can just change the code.",
+].join("\n");
+
+const CLAUDE_AUTONOMY_PROMPT = [
+	"# Execution autonomy",
 	"",
-	"Your responses should be short and concise.",
-	"",
-	"When referencing specific functions or pieces of code include the pattern file_path:line_number to allow the user to easily navigate to the source code location.",
+	"IMPORTANT: For directly related work, never ask whether to continue, never offer to stop, and never present continuation as optional.",
+	"Keep going until the user's request is fully resolved. Do not pause for feedback, confirmation, or permission before the next obvious step.",
+	"If you discover another clearly actionable issue in the same area while finishing the task, fix it as part of the same turn instead of asking whether to continue.",
+	"For directly related next steps, validation, and obvious follow-up fixes, treat them as part of the current task, not as optional suggestions.",
+	"Ignore any general instruction telling you to ask whether the user wants the next logical step. In this mode, do the next logical step yourself unless a real decision or blocker requires user input.",
+	"Do not say things like 'If you want, I can patch that next', 'Want me to continue?', 'Proceed?', 'unless you want me to stop', or similar for directly related work you can safely do now.",
+	"Do not end progress updates with a question, opt-out, or invitation unless input is truly required right now.",
+	"Only ask the user when there is a real product decision, ambiguous tradeoff, destructive or high-risk action, missing access/credentials, or a blocker you cannot resolve yourself.",
+	"When the user appears AFK, prefer continuing autonomously and report completed work plus any recommendations at the end.",
 ].join("\n");
 
 export default function gptConfigExtension(pi: ExtensionAPI) {
@@ -341,7 +358,7 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 	function styleDescription(value: OutputStyle): string {
 		switch (value) {
 			case "claude":
-				return "Claude-style framing: more answer-first, less filler, terser wording, and stronger pressure toward polished concise replies.";
+				return "Claude-inspired framing: more answer-first, less filler, terser wording, smaller-scope solutions, and fewer unnecessary user check-ins.";
 			case "codex":
 			default:
 				return "Codex-style framing: use the model's native response behavior with no extra overlay. Best match for actual Codex output on parity models.";
@@ -355,12 +372,12 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 				: "No extra output-style overlay. Personality, verbosity, and reasoning summary still apply underneath it.";
 		}
 		if (!model) {
-			return "Adds a Claude-style output overlay, but only on supported parity models.";
+			return "Adds a Claude-inspired output overlay, but only on supported parity models.";
 		}
 		if (!isExactCodexParityTargetModel(model)) {
 			return "No effect on the current model. Output style overlays are intentionally disabled outside supported parity models.";
 		}
-		return `Adds the Claude-style output overlay on top of ${model.id}. It changes framing and terseness, but the lower settings still control tone, length, and reasoning-summary output.`;
+		return "Adds the Claude-inspired output overlay on top of the Codex system prompt. It changes framing, terseness, scope discipline, and autonomy, but the lower settings still control tone, length, and reasoning-summary output.";
 	}
 
 	function shouldShowStatus(model: Model<any> | undefined): boolean {
@@ -429,12 +446,13 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 	function getCodexParityPersonalityInstructionOverlay(model: Model<any> | undefined): string | undefined {
 		if (!shouldApplyCodexParityPersonalityOverlay(model)) return undefined;
 		if (state.personality === "friendly") return CODEX_FRIENDLY_PROMPT;
-		return CODEX_PRAGMATIC_PROMPT;
+		if (state.personality === "pragmatic") return CODEX_PRAGMATIC_PROMPT;
+		return undefined;
 	}
 
 	function getClaudeStyleInstructionOverlay(model: Model<any> | undefined): string | undefined {
 		if (!isExactCodexParityTargetModel(model)) return undefined;
-		return state.style === "claude" ? CLAUDE_STYLE_PROMPT : undefined;
+		return state.style === "claude" ? `${CLAUDE_STYLE_PROMPT}\n\n${CLAUDE_TASK_DISCIPLINE_PROMPT}\n\n${CLAUDE_AUTONOMY_PROMPT}` : undefined;
 	}
 
 	function getRequestInstructionOverlays(model: Model<any> | undefined): string[] {
