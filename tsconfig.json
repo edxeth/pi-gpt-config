@@ -5,19 +5,7 @@
     "moduleResolution": "NodeNext",
     "strict": false,
     "skipLibCheck": true,
-    "noEmit": true,
-    "baseUrl": ".",
-    "paths": {
-      "@mariozechner/pi-coding-agent": [
-        "/home/devkit/.bun/install/global/node_modules/@mariozechner/pi-coding-agent/dist/index.d.ts"
-      ],
-      "@mariozechner/pi-ai": [
-        "/home/devkit/.bun/install/global/node_modules/@mariozechner/pi-ai/dist/index.d.ts"
-      ],
-      "@mariozechner/pi-tui": [
-        "/home/devkit/.bun/install/global/node_modules/@mariozechner/pi-tui/dist/index.d.ts"
-      ]
-    }
+    "noEmit": true
   },
   "include": ["index.ts"]
 }

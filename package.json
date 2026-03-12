@@ -1,5 +1,12 @@
 {
   "name": "pi-gpt-config",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "devDependencies": {
+    "@mariozechner/pi-ai": "0.57.1",
+    "@mariozechner/pi-coding-agent": "0.57.1",
+    "@mariozechner/pi-tui": "0.57.1",
+    "@types/node": "24.3.0",
+    "typescript": "5.9.3"
+  }
 }
