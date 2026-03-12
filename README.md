@@ -8,6 +8,12 @@ Adds a `/gpt_config` command to pi for **Codex-parity settings** on two models o
 
 Outside those two models, every setting in this extension is a **no-op**.
 
+## Install
+
+```bash
+pi install git:github.com/edxeth/pi-gpt-config
+```
+
 ## Controls
 - `Fast mode`: `on`, `off`
 - `Output style`: `codex`, `claude`
