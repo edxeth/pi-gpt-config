@@ -1,5 +1,7 @@
 # pi-gpt-config
 
+https://github.com/user-attachments/assets/639bccff-e986-4061-b4ff-8f9fe8228feb
+
 Adds a `/gpt_config` command to pi for **Codex-parity settings** on two models only:
 - `gpt-5.3-codex`
 - `gpt-5.4`
