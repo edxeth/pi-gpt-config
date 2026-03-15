@@ -2,6 +2,9 @@
   "name": "pi-gpt-config",
   "private": true,
   "type": "module",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
   "devDependencies": {
     "@mariozechner/pi-ai": "0.57.1",
     "@mariozechner/pi-coding-agent": "0.57.1",
