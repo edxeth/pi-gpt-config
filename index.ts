@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
@@ -6,32 +6,44 @@ import { DynamicBorder, getSettingsListTheme } from "@mariozechner/pi-coding-age
 import { Container, type SettingItem, SettingsList, Text, wrapTextWithAnsi } from "@mariozechner/pi-tui";
 import type { Model } from "@mariozechner/pi-ai";
 
-type Personality = "friendly" | "pragmatic" | "none";
+type Personality = "friendly" | "pragmatic" | "claude" | "none";
 type Verbosity = "low" | "medium" | "high";
-type VerbositySetting = Verbosity | "inherit";
 type ReasoningSummary = "none" | "auto" | "concise" | "detailed";
-type ReasoningSummarySetting = ReasoningSummary | "inherit";
-type OutputStyle = "codex" | "claude";
 
 interface GPTConfigState {
 	fastMode: boolean;
-	style: OutputStyle;
 	personality: Personality;
-	verbosity: VerbositySetting;
-	summary: ReasoningSummarySetting;
+	verbosity: Verbosity;
+	summary: ReasoningSummary;
+}
+
+interface LegacyGPTConfigState {
+	fastMode?: boolean;
+	style?: "codex" | "claude" | "default" | string;
+	personality?: Personality | "default";
+	verbosity?: Verbosity | "inherit";
+	summary?: ReasoningSummary | "inherit";
 }
 
 const STATUS_KEY = "gpt-config";
+const SETTINGS_NAMESPACE = "gptConfig";
 const AGENT_DIR = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
-const STATE_FILE = join(AGENT_DIR, "cache", "pi-gpt-config", "state.json");
+const SETTINGS_FILE = join(AGENT_DIR, "settings.json");
+const LEGACY_STATE_FILE = join(AGENT_DIR, "cache", "pi-gpt-config", "state.json");
 const CODEX_PARITY_MODEL_IDS = new Set(["gpt-5.3-codex", "gpt-5.4"]);
+const ANSI_YELLOW = "\u001b[33m";
+const ANSI_RESET = "\u001b[0m";
+const PERSONALITY_PROMPT_TOKENS: Record<Exclude<Personality, "none">, number> = {
+	friendly: 452,
+	pragmatic: 339,
+	claude: 624,
+};
 
 const DEFAULT_STATE: GPTConfigState = {
 	fastMode: false,
-	style: "codex",
 	personality: "none",
-	verbosity: "inherit",
-	summary: "inherit",
+	verbosity: "medium",
+	summary: "auto",
 };
 
 const CODEX_PRAGMATIC_PROMPT = [
@@ -121,9 +133,8 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 
 	// Policy layers:
 	// 1. parity target checks decide whether we should emulate exact Codex behavior for a model id
-	// 2. parity defaults resolve inherited verbosity/summary values for those target models
-	// 3. instruction overlays append Codex/Claude prompt fragments to the outgoing request
-	// 4. footer visibility is UI-only and intentionally separate from overlay behavior
+	// 2. personality overlays are appended to the turn system prompt before the agent loop starts
+	// 3. footer visibility is UI-only and intentionally separate from overlay behavior
 	function isExactCodexParityTargetModel(model: Model<any> | undefined): boolean {
 		return !!model && CODEX_PARITY_MODEL_IDS.has(model.id);
 	}
@@ -140,36 +151,43 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 		return isExactCodexParityTargetModel(model);
 	}
 
-	function normalizePersonality(value: unknown): Personality {
-		return value === "friendly" || value === "pragmatic" || value === "none" || value === "default"
-			? (value === "default" ? "none" : value)
-			: DEFAULT_STATE.personality;
+	function stripAnsi(value: string): string {
+		return value.replace(/\u001b\[[0-9;]*m/g, "");
 	}
 
-	function normalizeVerbosity(value: unknown): VerbositySetting {
-		return value === "inherit" || value === "low" || value === "medium" || value === "high"
-			? value
+	function normalizePersonality(value: unknown): Personality {
+		if (typeof value !== "string") return DEFAULT_STATE.personality;
+		const normalized = stripAnsi(value).trim().toLowerCase();
+		if (normalized.startsWith("friendly")) return "friendly";
+		if (normalized.startsWith("pragmatic")) return "pragmatic";
+		if (normalized.startsWith("claude")) return "claude";
+		if (normalized === "none" || normalized === "default") return "none";
+		return DEFAULT_STATE.personality;
+	}
+
+	function normalizeVerbosity(value: unknown): Verbosity {
+		if (typeof value !== "string") return DEFAULT_STATE.verbosity;
+		const normalized = stripAnsi(value).trim().toLowerCase();
+		if (normalized === "inherit" || normalized === "default") return DEFAULT_STATE.verbosity;
+		return normalized === "low" || normalized === "medium" || normalized === "high"
+			? normalized
 			: DEFAULT_STATE.verbosity;
 	}
 
-	function normalizeSummary(value: unknown): ReasoningSummarySetting {
-		return value === "inherit" || value === "none" || value === "auto" || value === "concise" || value === "detailed"
-			? value
+	function normalizeSummary(value: unknown): ReasoningSummary {
+		if (typeof value !== "string") return DEFAULT_STATE.summary;
+		const normalized = stripAnsi(value).trim().toLowerCase();
+		if (normalized === "inherit") return DEFAULT_STATE.summary;
+		return normalized === "none" || normalized === "auto" || normalized === "concise" || normalized === "detailed"
+			? normalized
 			: DEFAULT_STATE.summary;
 	}
 
-	function normalizeStyle(value: unknown): OutputStyle {
-		if (value === "codex" || value === "claude") return value;
-		if (value === "default") return "codex";
-		return DEFAULT_STATE.style;
-	}
-
 	function normalizeState(value: unknown): GPTConfigState {
-		const candidate = (value ?? {}) as Partial<GPTConfigState> & { style?: OutputStyle | string };
+		const candidate = (value ?? {}) as LegacyGPTConfigState;
 		return {
 			fastMode: candidate.fastMode === true,
-			style: normalizeStyle(candidate.style),
-			personality: normalizePersonality(candidate.personality),
+			personality: candidate.style === "claude" ? "claude" : normalizePersonality(candidate.personality),
 			verbosity: normalizeVerbosity(candidate.verbosity),
 			summary: normalizeSummary(candidate.summary),
 		};
@@ -178,86 +196,117 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 	function serializeState(currentState: GPTConfigState): GPTConfigState {
 		return {
 			fastMode: currentState.fastMode,
-			style: currentState.style,
 			personality: currentState.personality,
 			verbosity: currentState.verbosity,
 			summary: currentState.summary,
 		};
 	}
 
-	function readGlobalState(): GPTConfigState {
+	function readJsonObject(path: string): Record<string, unknown> | undefined {
 		try {
-			const raw = readFileSync(STATE_FILE, "utf8");
-			return normalizeState(JSON.parse(raw));
+			if (!existsSync(path)) return undefined;
+			const raw = readFileSync(path, "utf8");
+			const parsed = JSON.parse(raw);
+			return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+				? parsed as Record<string, unknown>
+				: undefined;
 		} catch {
-			return { ...DEFAULT_STATE };
+			return undefined;
 		}
 	}
 
+	function readGlobalState(): { state: GPTConfigState; migratedFromLegacy: boolean } {
+		const settings = readJsonObject(SETTINGS_FILE);
+		const configured = settings?.[SETTINGS_NAMESPACE];
+		if (configured && typeof configured === "object" && !Array.isArray(configured)) {
+			return { state: normalizeState(configured), migratedFromLegacy: false };
+		}
+
+		const legacy = readJsonObject(LEGACY_STATE_FILE);
+		if (legacy) {
+			return { state: normalizeState(legacy), migratedFromLegacy: true };
+		}
+
+		return { state: { ...DEFAULT_STATE }, migratedFromLegacy: false };
+	}
+
 	function restoreState(ctx: ExtensionContext) {
-		state = readGlobalState();
+		const restored = readGlobalState();
+		state = restored.state;
+		if (restored.migratedFromLegacy) persistState();
 		updateStatus(ctx);
 	}
 
 	function persistState() {
 		try {
-			mkdirSync(dirname(STATE_FILE), { recursive: true });
-			writeFileSync(STATE_FILE, JSON.stringify(serializeState(state), null, 2), "utf8");
+			const settings = readJsonObject(SETTINGS_FILE) ?? {};
+			const existing = settings[SETTINGS_NAMESPACE];
+			settings[SETTINGS_NAMESPACE] = existing && typeof existing === "object" && !Array.isArray(existing)
+				? { ...(existing as Record<string, unknown>), ...serializeState(state) }
+				: serializeState(state);
+			mkdirSync(dirname(SETTINGS_FILE), { recursive: true });
+			writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), "utf8");
 		} catch {
 			// Ignore persistence failures; runtime state still applies for this session.
 		}
 	}
 
-	function getCodexParityDefaultVerbosity(model: Model<any> | undefined): Verbosity | undefined {
-		return shouldApplyCodexParityDefaults(model) ? "low" : undefined;
+	function getEffectiveVerbosity(_model: Model<any> | undefined): Verbosity {
+		return state.verbosity;
 	}
 
-	function getEffectiveVerbosity(model: Model<any> | undefined): Verbosity | undefined {
-		if (state.verbosity !== "inherit") return state.verbosity;
-		return getCodexParityDefaultVerbosity(model);
+	function getEffectiveSummary(_model: Model<any> | undefined): ReasoningSummary {
+		return state.summary;
 	}
 
-	function getCodexParityDefaultSummary(model: Model<any> | undefined): ReasoningSummary | undefined {
-		return shouldApplyCodexParityDefaults(model) ? "none" : undefined;
-	}
-
-	function getEffectiveSummary(model: Model<any> | undefined): ReasoningSummary | undefined {
-		if (state.summary !== "inherit") return state.summary;
-		return getCodexParityDefaultSummary(model);
-	}
-
-	function formatPersonality(value: Personality, model: Model<any> | undefined): string {
-		if (value === "none" && shouldApplyCodexParityDefaults(model)) return "default";
+	function formatPersonality(value: Personality, _model: Model<any> | undefined): string {
 		return value;
 	}
 
-	function formatVerbosity(value: VerbositySetting, model: Model<any> | undefined): string {
-		if (value !== "inherit") return value;
-		const inherited = getCodexParityDefaultVerbosity(model);
-		return inherited ? `inherit (${inherited})` : "inherit";
+	function personalityTokenLabel(value: Personality): string {
+		if (value === "none") return "";
+		return `(~${PERSONALITY_PROMPT_TOKENS[value]} tok)`;
 	}
 
-	function formatSummary(value: ReasoningSummarySetting, model: Model<any> | undefined): string {
-		if (value !== "inherit") return value;
-		const inherited = getCodexParityDefaultSummary(model);
-		return inherited ? `inherit (${inherited})` : "inherit";
+	function formatPersonalityDisplay(value: Personality, model: Model<any> | undefined): string {
+		const label = formatPersonality(value, model);
+		if (value === "none") return label;
+		return `${label} ${ANSI_YELLOW}${personalityTokenLabel(value)}${ANSI_RESET}`;
+	}
+
+	function formatVerbosity(value: Verbosity, _model: Model<any> | undefined): string {
+		return value;
+	}
+
+	function formatSummary(value: ReasoningSummary, _model: Model<any> | undefined): string {
+		return value;
 	}
 
 	function personalityDescription(value: Personality, model: Model<any> | undefined): string {
+		if (!shouldApplyCodexParityPersonalityOverlay(model)) {
+			return value === "none"
+				? "No effect on the current model."
+				: `No effect on the current model. ${personalityTokenLabel(value)} prompt cost shown for parity models only.`;
+		}
 		switch (value) {
 			case "friendly":
-				return shouldApplyCodexParityPersonalityOverlay(model)
-					? "Warmer, more collaborative tone. Same task behavior, but with softer wording and more teammate-like phrasing."
-					: "No effect on the current model. Friendly personality parity is only applied on supported parity models.";
+				return [
+					"Warmer, more collaborative tone. Same task behavior, but with softer wording and more teammate-like phrasing.",
+					"Warning: re-injected on every model request, so it adds repeated prompt-token cost.",
+				].join("\n");
 			case "pragmatic":
-				return shouldApplyCodexParityPersonalityOverlay(model)
-					? "More direct, factual, and compact tone. Best match for Codex's default voice."
-					: "No effect on the current model. Pragmatic personality parity is only applied on supported parity models.";
+				return [
+					"More direct, factual, and compact tone. Best match for Codex's default voice.",
+					"Warning: re-injected on every model request, so it adds repeated prompt-token cost.",
+				].join("\n");
+			case "claude":
+				return [
+					"Claude-inspired behavior pack: more answer-first, terser, smaller-scope solutions, and fewer unnecessary check-ins. This mode is mutually exclusive with friendly and pragmatic.",
+					"Warning: re-injected on every model request, so it adds repeated prompt-token cost.",
+				].join("\n");
 			case "none":
 			default:
-				return shouldApplyCodexParityDefaults(model)
-					? "Use the model's built-in Codex default personality. On supported parity models this is already concise and pragmatic."
-					: "No effect on the current model. This extension does not apply personality overrides outside supported parity models.";
+				return "Use the model's built-in Codex default personality.";
 		}
 	}
 
@@ -288,20 +337,14 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 		return shouldApplyCodexParityDefaults(model);
 	}
 
-	function verbosityDescription(value: VerbositySetting, model: Model<any> | undefined): string {
-		if (value === "inherit") {
-			const inherited = getCodexParityDefaultVerbosity(model);
-			return inherited
-				? `Use the model's default answer length. On ${model?.id ?? "this model"}, that resolves to ${inherited}.`
-				: "Use the model's default answer length. No explicit verbosity override will be sent unless you choose one.";
-		}
+	function verbosityDescription(value: Verbosity, _model: Model<any> | undefined): string {
 		switch (value) {
 			case "low":
 				return "Shortest answers. Strongest control for keeping responses brief.";
 			case "medium":
 				return "Balanced answer length. More explanation than low, less than high.";
 			case "high":
-				return "Most detailed answers. Stronger than output style when you want the model to elaborate.";
+				return "Most detailed answers. Use this when you want the model to elaborate.";
 		}
 	}
 
@@ -311,9 +354,6 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 		if (!shouldApplyVerbosityParity(model)) {
 			return "No effect on the current model. Verbosity overrides are intentionally disabled outside supported parity models.";
 		}
-		if (state.verbosity === "inherit") {
-			return `Effective value: ${effective}. This controls final answer length; output style only nudges phrasing around it.`;
-		}
 		return `Effective value: ${effective}. This is the main knob for how short or long the final answer will be.`;
 	}
 
@@ -321,13 +361,7 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 		return shouldApplyCodexParityDefaults(model);
 	}
 
-	function summaryDescription(value: ReasoningSummarySetting, model: Model<any> | undefined): string {
-		if (value === "inherit") {
-			const inherited = getCodexParityDefaultSummary(model);
-			return inherited
-				? `Use the model's default reasoning-summary behavior. On ${model?.id ?? "this model"}, that resolves to ${inherited}.`
-				: "Use the model's default reasoning-summary behavior. No explicit reasoning.summary value will be sent unless you choose one.";
-		}
+	function summaryDescription(value: ReasoningSummary, _model: Model<any> | undefined): string {
 		switch (value) {
 			case "none":
 				return "No reasoning summary. This changes debug/inspection output, not the length of the final answer.";
@@ -355,31 +389,6 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 		return `Effective value: ${effective}. This changes reasoning-summary output only, not the answer's tone or length.`;
 	}
 
-	function styleDescription(value: OutputStyle): string {
-		switch (value) {
-			case "claude":
-				return "Claude-inspired framing: more answer-first, less filler, terser wording, smaller-scope solutions, and fewer unnecessary user check-ins.";
-			case "codex":
-			default:
-				return "Codex-style framing: use the model's native response behavior with no extra overlay. Best match for actual Codex output on parity models.";
-		}
-	}
-
-	function styleReason(model: Model<any> | undefined): string {
-		if (state.style === "codex") {
-			return isExactCodexParityTargetModel(model)
-				? "Uses the model's native Codex response framing. Personality, verbosity, and reasoning summary still apply underneath it."
-				: "No extra output-style overlay. Personality, verbosity, and reasoning summary still apply underneath it.";
-		}
-		if (!model) {
-			return "Adds a Claude-inspired output overlay, but only on supported parity models.";
-		}
-		if (!isExactCodexParityTargetModel(model)) {
-			return "No effect on the current model. Output style overlays are intentionally disabled outside supported parity models.";
-		}
-		return "Adds the Claude-inspired output overlay on top of the Codex system prompt. It changes framing, terseness, scope discipline, and autonomy, but the lower settings still control tone, length, and reasoning-summary output.";
-	}
-
 	function shouldShowStatus(model: Model<any> | undefined): boolean {
 		return shouldShowParityStatusFooter(model);
 	}
@@ -389,14 +398,16 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 			ctx.ui.setStatus(STATUS_KEY, undefined);
 			return;
 		}
-		ctx.ui.setStatus(STATUS_KEY, `priority ${state.fastMode ? "fast" : "none"} · style ${state.style}`);
+		ctx.ui.setStatus(
+			STATUS_KEY,
+			`priority ${state.fastMode ? "fast" : "none"} · personality ${formatPersonality(state.personality, ctx.model)}`,
+		);
 	}
 
 	function describeState(ctx: ExtensionContext): string[] {
 		return [
 			`Model: ${modelLabel(ctx.model)}`,
 			`Fast mode: ${state.fastMode ? "on" : "off"} (${fastModeReason(ctx.model)})`,
-			`Output style: ${state.style} (${styleReason(ctx.model)})`,
 			`Personality: ${formatPersonality(state.personality, ctx.model)} (${personalityDescription(state.personality, ctx.model)})`,
 			`Verbosity: ${formatVerbosity(state.verbosity, ctx.model)} (${verbosityReason(ctx.model)})`,
 			`Summary: ${formatSummary(state.summary, ctx.model)} (${summaryReason(ctx.model)})`,
@@ -413,32 +424,25 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 				values: ["on", "off"],
 			},
 			{
-				id: "style",
-				label: "Output style",
-				description: `${styleDescription(state.style)} ${styleReason(ctx.model)}`,
-				currentValue: state.style,
-				values: ["codex", "claude"],
-			},
-			{
 				id: "personality",
 				label: "Personality",
-				description: `${personalityDescription(state.personality, ctx.model)} Tone only; output style and verbosity still apply.`,
-				currentValue: formatPersonality(state.personality, ctx.model),
-				values: ["default", "friendly", "pragmatic"],
+				description: personalityDescription(state.personality, ctx.model),
+				currentValue: formatPersonalityDisplay(state.personality, ctx.model),
+				values: ["none", `friendly ${ANSI_YELLOW}(~452 tok)${ANSI_RESET}`, `pragmatic ${ANSI_YELLOW}(~339 tok)${ANSI_RESET}`, `claude ${ANSI_YELLOW}(~624 tok)${ANSI_RESET}`],
 			},
 			{
 				id: "verbosity",
 				label: "Verbosity",
 				description: `${verbosityDescription(state.verbosity, ctx.model)} ${verbosityReason(ctx.model)}`,
 				currentValue: formatVerbosity(state.verbosity, ctx.model),
-				values: ["inherit", "low", "medium", "high"],
+				values: ["low", "medium", "high"],
 			},
 			{
 				id: "summary",
 				label: "Reasoning summary",
 				description: `${summaryDescription(state.summary, ctx.model)} ${summaryReason(ctx.model)}`,
 				currentValue: formatSummary(state.summary, ctx.model),
-				values: ["inherit", "none", "auto", "concise", "detailed"],
+				values: ["none", "auto", "concise", "detailed"],
 			},
 		];
 	}
@@ -447,28 +451,18 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 		if (!shouldApplyCodexParityPersonalityOverlay(model)) return undefined;
 		if (state.personality === "friendly") return CODEX_FRIENDLY_PROMPT;
 		if (state.personality === "pragmatic") return CODEX_PRAGMATIC_PROMPT;
+		if (state.personality === "claude") {
+			return `${CLAUDE_STYLE_PROMPT}\n\n${CLAUDE_TASK_DISCIPLINE_PROMPT}\n\n${CLAUDE_AUTONOMY_PROMPT}`;
+		}
 		return undefined;
-	}
-
-	function getClaudeStyleInstructionOverlay(model: Model<any> | undefined): string | undefined {
-		if (!isExactCodexParityTargetModel(model)) return undefined;
-		return state.style === "claude" ? `${CLAUDE_STYLE_PROMPT}\n\n${CLAUDE_TASK_DISCIPLINE_PROMPT}\n\n${CLAUDE_AUTONOMY_PROMPT}` : undefined;
-	}
-
-	function getRequestInstructionOverlays(model: Model<any> | undefined): string[] {
-		if (!isExactCodexParityTargetModel(model)) return [];
-		const overlays = [getCodexParityPersonalityInstructionOverlay(model), getClaudeStyleInstructionOverlay(model)]
-			.filter((value): value is string => typeof value === "string" && value.length > 0);
-		return overlays;
 	}
 
 	async function openPanel(ctx: ExtensionContext) {
 		const items = buildItems(ctx);
 		const fastModeItem = items[0]!;
-		const styleItem = items[1]!;
-		const personalityItem = items[2]!;
-		const verbosityItem = items[3]!;
-		const summaryItem = items[4]!;
+		const personalityItem = items[1]!;
+		const verbosityItem = items[2]!;
+		const summaryItem = items[3]!;
 
 		await ctx.ui.custom<void>((tui, theme, _kb, done) => {
 			const container = new Container();
@@ -512,15 +506,10 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 							...state,
 							summary: normalizeSummary(newValue),
 						};
-					} else if (id === "style") {
-						state = {
-							...state,
-							style: normalizeStyle(newValue),
-						};
 					}
 					fastModeItem.description = fastModeReason(ctx.model);
-					styleItem.description = `${styleDescription(state.style)} ${styleReason(ctx.model)}`;
-					personalityItem.description = `${personalityDescription(state.personality, ctx.model)} Tone only; output style and verbosity still apply.`;
+					personalityItem.currentValue = formatPersonalityDisplay(state.personality, ctx.model);
+					personalityItem.description = personalityDescription(state.personality, ctx.model);
 					verbosityItem.description = `${verbosityDescription(state.verbosity, ctx.model)} ${verbosityReason(ctx.model)}`;
 					summaryItem.description = `${summaryDescription(state.summary, ctx.model)} ${summaryReason(ctx.model)}`;
 					persistState();
@@ -552,7 +541,7 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 	}
 
 	pi.registerCommand("gpt_config", {
-		description: "Configure output style, personality, verbosity, reasoning summary, and fast mode for Codex parity",
+		description: "Configure personality, verbosity, reasoning summary, and fast mode for Codex parity",
 		handler: async (args, ctx) => {
 			const trimmed = args.trim().toLowerCase();
 			const [command, value] = trimmed.split(/\s+/, 2);
@@ -564,18 +553,18 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 				state = { ...DEFAULT_STATE };
 				persistState();
 				updateStatus(ctx);
-				ctx.ui.notify("GPT config reset to inherited defaults (fast=off, style=codex, personality=default, verbosity=inherit, summary=inherit).", "info");
+				ctx.ui.notify("GPT config reset to defaults (fast=off, personality=none, verbosity=medium, summary=auto).", "info");
 				return;
 			}
 			if (command === "personality" && value) {
-				if (value === "default" || value === "friendly" || value === "pragmatic" || value === "none") {
+				if (value === "friendly" || value === "pragmatic" || value === "claude" || value === "none") {
 					state = { ...state, personality: normalizePersonality(value) };
 					persistState();
 					updateStatus(ctx);
 					ctx.ui.notify(`GPT personality set to ${formatPersonality(state.personality, ctx.model)}.`, "info");
 					return;
 				}
-				ctx.ui.notify("Usage: /gpt_config personality default|friendly|pragmatic", "warning");
+				ctx.ui.notify("Usage: /gpt_config personality none|friendly|pragmatic|claude", "warning");
 				return;
 			}
 			if (command === "fast" && value) {
@@ -590,40 +579,37 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 				return;
 			}
 			if (command === "verbosity" && value) {
-				if (value === "inherit" || value === "low" || value === "medium" || value === "high") {
+				if (value === "low" || value === "medium" || value === "high") {
 					state = { ...state, verbosity: normalizeVerbosity(value) };
 					persistState();
 					updateStatus(ctx);
 					ctx.ui.notify(`GPT verbosity set to ${value}.`, "info");
 					return;
 				}
-				ctx.ui.notify("Usage: /gpt_config verbosity inherit|low|medium|high", "warning");
+				ctx.ui.notify("Usage: /gpt_config verbosity low|medium|high", "warning");
 				return;
 			}
 			if (command === "summary" && value) {
-				if (value === "inherit" || value === "none" || value === "auto" || value === "concise" || value === "detailed") {
+				if (value === "none" || value === "auto" || value === "concise" || value === "detailed") {
 					state = { ...state, summary: normalizeSummary(value) };
 					persistState();
 					updateStatus(ctx);
 					ctx.ui.notify(`GPT reasoning summary set to ${value}.`, "info");
 					return;
 				}
-				ctx.ui.notify("Usage: /gpt_config summary inherit|none|auto|concise|detailed", "warning");
-				return;
-			}
-			if (command === "style" && value) {
-				if (value === "codex" || value === "claude" || value === "default") {
-					state = { ...state, style: normalizeStyle(value) };
-					persistState();
-					updateStatus(ctx);
-					ctx.ui.notify(`GPT output style set to ${state.style}.`, "info");
-					return;
-				}
-				ctx.ui.notify("Usage: /gpt_config style codex|claude", "warning");
+				ctx.ui.notify("Usage: /gpt_config summary none|auto|concise|detailed", "warning");
 				return;
 			}
 			await openPanel(ctx);
 		},
+	});
+
+	pi.on("before_agent_start", async (event, ctx) => {
+		const overlay = getCodexParityPersonalityInstructionOverlay(ctx.model);
+		if (!overlay) return;
+		return {
+			systemPrompt: `${event.systemPrompt}\n\n${overlay}`,
+		};
 	});
 
 	pi.on("before_provider_request", (event, ctx) => {
@@ -632,15 +618,6 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 
 		let modified = payload as Record<string, unknown>;
 		let changed = false;
-
-		const promptAdditions = getRequestInstructionOverlays(ctx.model);
-		if (promptAdditions.length > 0 && typeof modified.instructions === "string") {
-			modified = {
-				...modified,
-				instructions: `${modified.instructions}\n\n${promptAdditions.join("\n\n")}`,
-			};
-			changed = true;
-		}
 
 		if (state.fastMode && shouldApplyFastModeParity(ctx.model)) {
 			modified = { ...modified, service_tier: "priority" };
