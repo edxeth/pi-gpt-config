@@ -2,7 +2,7 @@
 
 https://github.com/user-attachments/assets/639bccff-e986-4061-b4ff-8f9fe8228feb
 
-Adds a `/gpt_config` command to pi for **Codex-parity settings** on two models only:
+Adds a `/gpt-config` command to pi for **Codex-parity settings** on two models only:
 - `gpt-5.3-codex`
 - `gpt-5.4`
 
@@ -41,27 +41,27 @@ pi install git:github.com/edxeth/pi-gpt-config
 Open the panel:
 
 ```text
-/gpt_config
+/gpt-config
 ```
 
 Subcommands:
 
 ```text
-/gpt_config status
-/gpt_config reset
-/gpt_config fast on
-/gpt_config fast off
-/gpt_config personality none
-/gpt_config personality friendly
-/gpt_config personality pragmatic
-/gpt_config personality claude
-/gpt_config verbosity low
-/gpt_config verbosity medium
-/gpt_config verbosity high
-/gpt_config summary none
-/gpt_config summary auto
-/gpt_config summary concise
-/gpt_config summary detailed
+/gpt-config status
+/gpt-config reset
+/gpt-config fast on
+/gpt-config fast off
+/gpt-config personality none
+/gpt-config personality friendly
+/gpt-config personality pragmatic
+/gpt-config personality claude
+/gpt-config verbosity low
+/gpt-config verbosity medium
+/gpt-config verbosity high
+/gpt-config summary none
+/gpt-config summary auto
+/gpt-config summary concise
+/gpt-config summary detailed
 ```
 
 ## Persistence

@@ -540,7 +540,7 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 		ctx.ui.notify("GPT config updated!", "info");
 	}
 
-	pi.registerCommand("gpt_config", {
+	pi.registerCommand("gpt-config", {
 		description: "Configure personality, verbosity, reasoning summary, and fast mode for Codex parity",
 		handler: async (args, ctx) => {
 			const trimmed = args.trim().toLowerCase();
@@ -564,7 +564,7 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 					ctx.ui.notify(`GPT personality set to ${formatPersonality(state.personality, ctx.model)}.`, "info");
 					return;
 				}
-				ctx.ui.notify("Usage: /gpt_config personality none|friendly|pragmatic|claude", "warning");
+				ctx.ui.notify("Usage: /gpt-config personality none|friendly|pragmatic|claude", "warning");
 				return;
 			}
 			if (command === "fast" && value) {
@@ -575,7 +575,7 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 					ctx.ui.notify(`GPT fast mode ${value}.`, "info");
 					return;
 				}
-				ctx.ui.notify("Usage: /gpt_config fast on|off", "warning");
+				ctx.ui.notify("Usage: /gpt-config fast on|off", "warning");
 				return;
 			}
 			if (command === "verbosity" && value) {
@@ -586,7 +586,7 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 					ctx.ui.notify(`GPT verbosity set to ${value}.`, "info");
 					return;
 				}
-				ctx.ui.notify("Usage: /gpt_config verbosity low|medium|high", "warning");
+				ctx.ui.notify("Usage: /gpt-config verbosity low|medium|high", "warning");
 				return;
 			}
 			if (command === "summary" && value) {
@@ -597,7 +597,7 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 					ctx.ui.notify(`GPT reasoning summary set to ${value}.`, "info");
 					return;
 				}
-				ctx.ui.notify("Usage: /gpt_config summary none|auto|concise|detailed", "warning");
+				ctx.ui.notify("Usage: /gpt-config summary none|auto|concise|detailed", "warning");
 				return;
 			}
 			await openPanel(ctx);
