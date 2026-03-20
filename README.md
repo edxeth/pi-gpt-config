@@ -20,7 +20,7 @@ pi install git:github.com/edxeth/pi-gpt-config
 - `Personality`: `none`, `friendly`, `pragmatic`, `claude`
 - `Verbosity`: `low`, `medium`, `high`
 - `Reasoning summary`: `none`, `auto`, `concise`, `detailed`
-- `Footer`: `on`, `off`
+- `Footer`: `show`, `hide`
 
 ## Behavior
 - `Fast mode` requests OpenAI priority service tier on models that support it.
@@ -38,6 +38,7 @@ pi install git:github.com/edxeth/pi-gpt-config
 - `Personality`: `none`
 - `Verbosity`: `medium`
 - `Reasoning summary`: `auto`
+- `Footer`: `show`
 
 ## Command
 Open the panel:
@@ -64,6 +65,8 @@ Subcommands:
 /gpt-config summary auto
 /gpt-config summary concise
 /gpt-config summary detailed
+/gpt-config footer show
+/gpt-config footer hide
 ```
 
 ## Persistence
@@ -87,7 +90,8 @@ Persisted shape:
     "fastMode": false,
     "personality": "none",
     "verbosity": "medium",
-    "summary": "auto"
+    "summary": "auto",
+    "showFooter": true
   }
 }
 ```
