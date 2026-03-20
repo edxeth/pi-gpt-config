@@ -30,7 +30,8 @@ const SETTINGS_NAMESPACE = "gptConfig";
 const AGENT_DIR = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
 const SETTINGS_FILE = join(AGENT_DIR, "settings.json");
 const LEGACY_STATE_FILE = join(AGENT_DIR, "cache", "pi-gpt-config", "state.json");
-const CODEX_PARITY_MODEL_IDS = new Set(["gpt-5.3-codex", "gpt-5.4"]);
+const CODEX_PARITY_MODEL_IDS = new Set(["gpt-5.3-codex", "gpt-5.4", "gpt-5.4-mini"]);
+const PRIORITY_SERVICE_TIER_MODEL_IDS = new Set(["gpt-5.3-codex", "gpt-5.4"]);
 const ANSI_YELLOW = "\u001b[33m";
 const ANSI_RESET = "\u001b[0m";
 const PERSONALITY_PROMPT_TOKENS: Record<Exclude<Personality, "none">, number> = {
@@ -315,14 +316,18 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 		return `${model.provider}/${model.id}`;
 	}
 
+	function supportsPriorityServiceTier(model: Model<any> | undefined): boolean {
+		return !!model && PRIORITY_SERVICE_TIER_MODEL_IDS.has(model.id);
+	}
+
 	function shouldApplyFastModeParity(model: Model<any> | undefined): boolean {
-		return isExactCodexParityTargetModel(model);
+		return supportsPriorityServiceTier(model);
 	}
 
 	function fastModeReason(model: Model<any> | undefined): string {
 		if (!model) return "No active model selected.";
 		if (!shouldApplyFastModeParity(model)) {
-			return "No effect on the current model. Fast mode parity is only applied on supported parity models.";
+			return "No effect on the current model. Priority service tier is only available on parity models that support it.";
 		}
 		return "Requests the priority service tier for lower latency. It affects speed only, not tone, answer length, or reasoning-summary behavior.";
 	}
@@ -398,10 +403,10 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 			ctx.ui.setStatus(STATUS_KEY, undefined);
 			return;
 		}
-		ctx.ui.setStatus(
-			STATUS_KEY,
-			`priority ${state.fastMode ? "fast" : "none"} · personality ${formatPersonality(state.personality, ctx.model)}`,
-		);
+		const status = supportsPriorityServiceTier(ctx.model)
+			? `priority ${state.fastMode ? "fast" : "none"} · personality ${formatPersonality(state.personality, ctx.model)}`
+			: `personality ${formatPersonality(state.personality, ctx.model)}`;
+		ctx.ui.setStatus(STATUS_KEY, status);
 	}
 
 	function describeState(ctx: ExtensionContext): string[] {
@@ -415,14 +420,17 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 	}
 
 	function buildItems(ctx: ExtensionContext): SettingItem[] {
-		return [
-			{
+		const items: SettingItem[] = [];
+		if (supportsPriorityServiceTier(ctx.model)) {
+			items.push({
 				id: "fastMode",
 				label: "Fast mode",
 				description: fastModeReason(ctx.model),
 				currentValue: state.fastMode ? "on" : "off",
 				values: ["on", "off"],
-			},
+			});
+		}
+		items.push(
 			{
 				id: "personality",
 				label: "Personality",
@@ -444,7 +452,8 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 				currentValue: formatSummary(state.summary, ctx.model),
 				values: ["none", "auto", "concise", "detailed"],
 			},
-		];
+		);
+		return items;
 	}
 
 	function getCodexParityPersonalityInstructionOverlay(model: Model<any> | undefined): string | undefined {
@@ -459,10 +468,10 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 
 	async function openPanel(ctx: ExtensionContext) {
 		const items = buildItems(ctx);
-		const fastModeItem = items[0]!;
-		const personalityItem = items[1]!;
-		const verbosityItem = items[2]!;
-		const summaryItem = items[3]!;
+		const fastModeItem = items.find((item) => item.id === "fastMode");
+		const personalityItem = items.find((item) => item.id === "personality");
+		const verbosityItem = items.find((item) => item.id === "verbosity");
+		const summaryItem = items.find((item) => item.id === "summary");
 
 		await ctx.ui.custom<void>((tui, theme, _kb, done) => {
 			const container = new Container();
@@ -507,11 +516,17 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 							summary: normalizeSummary(newValue),
 						};
 					}
-					fastModeItem.description = fastModeReason(ctx.model);
-					personalityItem.currentValue = formatPersonalityDisplay(state.personality, ctx.model);
-					personalityItem.description = personalityDescription(state.personality, ctx.model);
-					verbosityItem.description = `${verbosityDescription(state.verbosity, ctx.model)} ${verbosityReason(ctx.model)}`;
-					summaryItem.description = `${summaryDescription(state.summary, ctx.model)} ${summaryReason(ctx.model)}`;
+					if (fastModeItem) fastModeItem.description = fastModeReason(ctx.model);
+					if (personalityItem) {
+						personalityItem.currentValue = formatPersonalityDisplay(state.personality, ctx.model);
+						personalityItem.description = personalityDescription(state.personality, ctx.model);
+					}
+					if (verbosityItem) {
+						verbosityItem.description = `${verbosityDescription(state.verbosity, ctx.model)} ${verbosityReason(ctx.model)}`;
+					}
+					if (summaryItem) {
+						summaryItem.description = `${summaryDescription(state.summary, ctx.model)} ${summaryReason(ctx.model)}`;
+					}
 					persistState();
 					updateStatus(ctx);
 					settingsList.invalidate();
