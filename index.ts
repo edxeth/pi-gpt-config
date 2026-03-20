@@ -15,6 +15,7 @@ interface GPTConfigState {
 	personality: Personality;
 	verbosity: Verbosity;
 	summary: ReasoningSummary;
+	showFooter: boolean;
 }
 
 interface LegacyGPTConfigState {
@@ -23,6 +24,7 @@ interface LegacyGPTConfigState {
 	personality?: Personality | "default";
 	verbosity?: Verbosity | "inherit";
 	summary?: ReasoningSummary | "inherit";
+	showFooter?: boolean;
 }
 
 const STATUS_KEY = "gpt-config";
@@ -45,6 +47,7 @@ const DEFAULT_STATE: GPTConfigState = {
 	personality: "none",
 	verbosity: "medium",
 	summary: "auto",
+	showFooter: true,
 };
 
 const CODEX_PRAGMATIC_PROMPT = [
@@ -191,6 +194,7 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 			personality: candidate.style === "claude" ? "claude" : normalizePersonality(candidate.personality),
 			verbosity: normalizeVerbosity(candidate.verbosity),
 			summary: normalizeSummary(candidate.summary),
+			showFooter: candidate.showFooter !== false,
 		};
 	}
 
@@ -200,6 +204,7 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 			personality: currentState.personality,
 			verbosity: currentState.verbosity,
 			summary: currentState.summary,
+			showFooter: currentState.showFooter,
 		};
 	}
 
@@ -395,7 +400,7 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 	}
 
 	function shouldShowStatus(model: Model<any> | undefined): boolean {
-		return shouldShowParityStatusFooter(model);
+		return state.showFooter && shouldShowParityStatusFooter(model);
 	}
 
 	function updateStatus(ctx: ExtensionContext) {
@@ -416,6 +421,7 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 			`Personality: ${formatPersonality(state.personality, ctx.model)} (${personalityDescription(state.personality, ctx.model)})`,
 			`Verbosity: ${formatVerbosity(state.verbosity, ctx.model)} (${verbosityReason(ctx.model)})`,
 			`Summary: ${formatSummary(state.summary, ctx.model)} (${summaryReason(ctx.model)})`,
+			`Footer: ${state.showFooter ? "on" : "off"} (Shows priority/personality in the footer on supported parity models. UI-only.)`,
 		];
 	}
 
@@ -452,6 +458,13 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 				currentValue: formatSummary(state.summary, ctx.model),
 				values: ["none", "auto", "concise", "detailed"],
 			},
+			{
+				id: "footer",
+				label: "Footer",
+				description: "Show priority/personality in the footer on supported parity models. UI-only.",
+				currentValue: state.showFooter ? "on" : "off",
+				values: ["on", "off"],
+			},
 		);
 		return items;
 	}
@@ -472,6 +485,7 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 		const personalityItem = items.find((item) => item.id === "personality");
 		const verbosityItem = items.find((item) => item.id === "verbosity");
 		const summaryItem = items.find((item) => item.id === "summary");
+		const footerItem = items.find((item) => item.id === "footer");
 
 		await ctx.ui.custom<void>((tui, theme, _kb, done) => {
 			const container = new Container();
@@ -515,6 +529,11 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 							...state,
 							summary: normalizeSummary(newValue),
 						};
+					} else if (id === "footer") {
+						state = {
+							...state,
+							showFooter: newValue === "on",
+						};
 					}
 					if (fastModeItem) fastModeItem.description = fastModeReason(ctx.model);
 					if (personalityItem) {
@@ -526,6 +545,9 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 					}
 					if (summaryItem) {
 						summaryItem.description = `${summaryDescription(state.summary, ctx.model)} ${summaryReason(ctx.model)}`;
+					}
+					if (footerItem) {
+						footerItem.currentValue = state.showFooter ? "on" : "off";
 					}
 					persistState();
 					updateStatus(ctx);
@@ -568,7 +590,7 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 				state = { ...DEFAULT_STATE };
 				persistState();
 				updateStatus(ctx);
-				ctx.ui.notify("GPT config reset to defaults (fast=off, personality=none, verbosity=medium, summary=auto).", "info");
+				ctx.ui.notify("GPT config reset to defaults (fast=off, personality=none, verbosity=medium, summary=auto, footer=on).", "info");
 				return;
 			}
 			if (command === "personality" && value) {
@@ -613,6 +635,17 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 					return;
 				}
 				ctx.ui.notify("Usage: /gpt-config summary none|auto|concise|detailed", "warning");
+				return;
+			}
+			if (command === "footer" && value) {
+				if (value === "on" || value === "off") {
+					state = { ...state, showFooter: value === "on" };
+					persistState();
+					updateStatus(ctx);
+					ctx.ui.notify(`GPT footer ${value}.`, "info");
+					return;
+				}
+				ctx.ui.notify("Usage: /gpt-config footer on|off", "warning");
 				return;
 			}
 			await openPanel(ctx);

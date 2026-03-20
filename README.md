@@ -20,6 +20,7 @@ pi install git:github.com/edxeth/pi-gpt-config
 - `Personality`: `none`, `friendly`, `pragmatic`, `claude`
 - `Verbosity`: `low`, `medium`, `high`
 - `Reasoning summary`: `none`, `auto`, `concise`, `detailed`
+- `Footer`: `on`, `off`
 
 ## Behavior
 - `Fast mode` requests OpenAI priority service tier on models that support it.
