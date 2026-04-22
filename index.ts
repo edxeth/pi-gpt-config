@@ -698,15 +698,7 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 		restoreState(ctx);
 	});
 
-	pi.on("session_switch", async (_event, ctx) => {
-		restoreState(ctx);
-	});
-
 	pi.on("session_tree", async (_event, ctx) => {
-		restoreState(ctx);
-	});
-
-	pi.on("session_fork", async (_event, ctx) => {
 		restoreState(ctx);
 	});
 
