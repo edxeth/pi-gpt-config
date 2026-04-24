@@ -2,12 +2,13 @@
 
 https://github.com/user-attachments/assets/3e29b8f1-1b48-4a51-89c0-0c070c83cd70
 
-Adds a `/gpt-config` command to pi for **Codex-parity settings** on three models only:
+Adds a `/gpt-config` command to pi for **Codex-parity settings** on four models only:
 - `gpt-5.3-codex`
 - `gpt-5.4`
 - `gpt-5.4-mini`
+- `gpt-5.5`
 
-Outside those three models, every setting in this extension is a **no-op**.
+Outside those four models, every setting in this extension is a **no-op**.
 
 ## Install
 
@@ -16,7 +17,7 @@ pi install git:github.com/edxeth/pi-gpt-config
 ```
 
 ## Controls
-- `Fast mode`: `on`, `off` (only shown for `gpt-5.3-codex` and `gpt-5.4`)
+- `Fast mode`: `on`, `off` (only shown for `gpt-5.3-codex`, `gpt-5.4`, and `gpt-5.5`)
 - `Personality`: `none`, `friendly`, `pragmatic`, `claude`
 - `Verbosity`: `low`, `medium`, `high`
 - `Reasoning summary`: `none`, `auto`, `concise`, `detailed`
@@ -102,9 +103,9 @@ Legacy state from `~/.pi/agent/cache/pi-gpt-config/state.json` is migrated on lo
 - The panel explains what each setting does.
 - The panel hides `Fast mode` on `gpt-5.4-mini`.
 - The footer shows:
-  - `priority` and `personality` on `gpt-5.3-codex` and `gpt-5.4`
+  - `priority` and `personality` on `gpt-5.3-codex`, `gpt-5.4`, and `gpt-5.5`
   - `personality` only on `gpt-5.4-mini`
-- The footer is only shown on the three parity models.
+- The footer is only shown on the four parity models.
 
 ## Notes
 - This extension mixes native API controls (`service_tier`, `text.verbosity`, `reasoning.summary`) with a single prompt overlay mode (`personality`). `gpt-5.4-mini` gets the verbosity/summary/personality behavior but not `service_tier`.
