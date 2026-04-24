@@ -26,11 +26,11 @@ pi install git:github.com/edxeth/pi-gpt-config
 ## Behavior
 - `Fast mode` requests OpenAI priority service tier on models that support it.
 - `Personality` is the only prompt-bearing mode:
-  - `none`: model's built-in Codex tone with no extra overlay
+  - `none`: model/pi default tone with no extra overlay
   - `friendly`: warmer, more collaborative
   - `pragmatic`: more direct, factual, compact
-  - `claude`: Claude-inspired answer-first, terse, lower-overengineering, lower-check-in behavior
-- Non-`none` personalities are re-injected on every model request, so they add repeated prompt-token cost.
+  - `claude`: Claude Code-style short, direct communication based on Claude Code tone/output-efficiency guidance
+- Non-`none` personalities append one compact `<personality>` system-prompt overlay for the current agent turn.
 - `Verbosity` controls answer length.
 - `Reasoning summary` controls whether a summarized reasoning trace is requested back from the API. It does **not** disable internal reasoning.
 
@@ -110,6 +110,6 @@ Legacy state from `~/.pi/agent/cache/pi-gpt-config/state.json` is migrated on lo
 ## Notes
 - This extension mixes native API controls (`service_tier`, `text.verbosity`, `reasoning.summary`) with a single prompt overlay mode (`personality`). `gpt-5.4-mini` gets the verbosity/summary/personality behavior but not `service_tier`.
 - `personality=none` means no extra prompt overlay.
-- `personality=claude` is a Claude-inspired prompt overlay, not provider-native Claude mode or true Claude parity.
-- The Claude overlay also counter-pressures Codex-style optional check-ins by preferring autonomous continuation until a real blocker or decision appears.
+- `personality=claude` is a compact Claude Code-style overlay, not provider-native Claude mode or full Claude Code prompt parity.
+- Personality overlays are intentionally small deltas instead of full alternate system prompts, preserving pi's harness instructions and reducing repeated prompt-token cost.
 - Backend support still depends on the upstream provider honoring the request fields.
