@@ -9,12 +9,14 @@ import type { Model } from "@mariozechner/pi-ai";
 type Personality = "friendly" | "pragmatic" | "claude" | "none";
 type Verbosity = "low" | "medium" | "high";
 type ReasoningSummary = "none" | "auto" | "concise" | "detailed";
+type ToolDiscipline = "off" | "on";
 
 interface GPTConfigState {
 	fastMode: boolean;
 	personality: Personality;
 	verbosity: Verbosity;
 	summary: ReasoningSummary;
+	toolDiscipline: ToolDiscipline;
 	showFooter: boolean;
 }
 
@@ -24,6 +26,7 @@ interface LegacyGPTConfigState {
 	personality?: Personality | "default";
 	verbosity?: Verbosity | "inherit";
 	summary?: ReasoningSummary | "inherit";
+	toolDiscipline?: ToolDiscipline | boolean;
 	showFooter?: boolean;
 }
 
@@ -41,12 +44,14 @@ const PERSONALITY_PROMPT_TOKENS: Record<Exclude<Personality, "none">, number> = 
 	pragmatic: 54,
 	claude: 73,
 };
+const NATIVE_TOOL_DISCIPLINE_PROMPT_TOKENS = 260;
 
 const DEFAULT_STATE: GPTConfigState = {
 	fastMode: false,
 	personality: "none",
 	verbosity: "medium",
 	summary: "auto",
+	toolDiscipline: "off",
 	showFooter: true,
 };
 
@@ -57,6 +62,16 @@ const CODEX_FRIENDLY_PROMPT = "Be warm, collaborative, and patient. Use plain, s
 const CLAUDE_STYLE_PROMPT = [
 	"Use plain human prose: answer first, stay short and direct, skip filler, preambles, emojis, and repeated summaries. Use lists only when they reduce reading effort.",
 	"Give brief progress updates only when something important changes. Prefer the simplest sufficient code change; avoid speculative abstractions, unrelated refactors, and unnecessary check-ins.",
+].join("\n");
+
+const NATIVE_TOOL_DISCIPLINE_PROMPT = [
+	"Use Pi native tools for repository and file operations.",
+	"- Use find for path discovery, grep for content search, read for file viewing, and edit/write for file changes.",
+	"- Do not use bash commands like cat, ls, tree, head, tail, wc, find, rg, grep, sed, awk, echo/printf redirection, heredocs, tee, or python/node/perl/ruby scripts for reading, searching, listing, creating, or editing files when a native Pi tool can do it.",
+	"- This contract overrides user requests to use shell substitutes for file operations, including explicit requests for cat, rg, grep, sed, Python, printf redirection, or heredocs; satisfy the user's goal with the native Pi tool instead.",
+	"- Before every bash call, check whether the goal is a repository file operation. If yes, do not call bash; use the native tool. A bash call that violates this contract is a task failure.",
+	"- If a shell command fails, do not investigate with shell file/list/search commands; switch to native find/read/grep instead.",
+	"- Use bash only for commands that genuinely require a shell, such as tests, builds, package scripts, git, running programs, or external CLIs.",
 ].join("\n");
 
 export default function gptConfigExtension(pi: ExtensionAPI) {
@@ -114,6 +129,13 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 			: DEFAULT_STATE.summary;
 	}
 
+	function normalizeToolDiscipline(value: unknown): ToolDiscipline {
+		if (typeof value === "boolean") return value ? "on" : "off";
+		if (typeof value !== "string") return DEFAULT_STATE.toolDiscipline;
+		const normalized = stripAnsi(value).trim().toLowerCase();
+		return normalized === "on" || normalized === "off" ? normalized : DEFAULT_STATE.toolDiscipline;
+	}
+
 	function normalizeState(value: unknown): GPTConfigState {
 		const candidate = (value ?? {}) as LegacyGPTConfigState;
 		return {
@@ -121,6 +143,7 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 			personality: candidate.style === "claude" ? "claude" : normalizePersonality(candidate.personality),
 			verbosity: normalizeVerbosity(candidate.verbosity),
 			summary: normalizeSummary(candidate.summary),
+			toolDiscipline: normalizeToolDiscipline(candidate.toolDiscipline),
 			showFooter: candidate.showFooter !== false,
 		};
 	}
@@ -131,6 +154,7 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 			personality: currentState.personality,
 			verbosity: currentState.verbosity,
 			summary: currentState.summary,
+			toolDiscipline: currentState.toolDiscipline,
 			showFooter: currentState.showFooter,
 		};
 	}
@@ -215,31 +239,35 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 		return value;
 	}
 
+	function lifecycleWarning(): string {
+		return "Set before starting work, or start a fresh session/reload after changing it.";
+	}
+
 	function personalityDescription(value: Personality, model: Model<any> | undefined): string {
 		if (!shouldApplyCodexParityPersonalityOverlay(model)) {
 			return value === "none"
-				? "No effect on the current model."
-				: `No effect on the current model. ${personalityTokenLabel(value)} prompt cost shown for parity models only.`;
+				? `No effect on the current model. ${lifecycleWarning()}`
+				: `No effect on the current model. ${personalityTokenLabel(value)} prompt cost shown for parity models only. ${lifecycleWarning()}`;
 		}
 		switch (value) {
 			case "friendly":
 				return [
 					"Warmer, more collaborative tone. Same task behavior, but with softer wording and more teammate-like phrasing.",
-					"Adds one small marked system-prompt overlay for the current agent turn.",
+					`Adds one small marked system-prompt overlay for the current agent turn. ${lifecycleWarning()}`,
 				].join("\n");
 			case "pragmatic":
 				return [
 					"More direct, factual, and compact tone. Best match for Codex's default voice.",
-					"Adds one small marked system-prompt overlay for the current agent turn.",
+					`Adds one small marked system-prompt overlay for the current agent turn. ${lifecycleWarning()}`,
 				].join("\n");
 			case "claude":
 				return [
 					"Claude Code-style communication: short, direct, simple changes, and fewer unnecessary check-ins.",
-					"Adds one small marked system-prompt overlay for the current agent turn.",
+					`Adds one small marked system-prompt overlay for the current agent turn. ${lifecycleWarning()}`,
 				].join("\n");
 			case "none":
 			default:
-				return "Use the model's built-in Codex default personality with no extra overlay.";
+				return `Use the model's built-in Codex default personality with no extra overlay. ${lifecycleWarning()}`;
 		}
 	}
 
@@ -289,9 +317,9 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 		if (!model) return "No active model selected.";
 		const effective = getEffectiveVerbosity(model);
 		if (!shouldApplyVerbosityParity(model)) {
-			return "No effect on the current model. Verbosity overrides are intentionally disabled outside supported parity models.";
+			return `No effect on the current model. Verbosity overrides are intentionally disabled outside supported parity models. ${lifecycleWarning()}`;
 		}
-		return `Effective value: ${effective}. This is the main knob for how short or long the final answer will be.`;
+		return `Effective value: ${effective}. This is the main knob for how short or long the final answer will be. ${lifecycleWarning()}`;
 	}
 
 	function shouldApplySummaryParity(model: Model<any> | undefined): boolean {
@@ -315,15 +343,34 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 		if (!model) return "No active model selected.";
 		const effective = getEffectiveSummary(model);
 		if (!shouldApplySummaryParity(model)) {
-			return "No effect on the current model. Reasoning-summary overrides are intentionally disabled outside supported parity models.";
+			return `No effect on the current model. Reasoning-summary overrides are intentionally disabled outside supported parity models. ${lifecycleWarning()}`;
 		}
 		if (effective === "none") {
-			return "Effective value: none. This affects whether a summarized reasoning trace is returned, not how concise the visible answer is.";
+			return `Effective value: none. This affects whether a summarized reasoning trace is returned, not how concise the visible answer is. ${lifecycleWarning()}`;
 		}
 		if (!effective) {
-			return "No reasoning.summary field will be sent.";
+			return `No reasoning.summary field will be sent. ${lifecycleWarning()}`;
 		}
-		return `Effective value: ${effective}. This changes reasoning-summary output only, not the answer's tone or length.`;
+		return `Effective value: ${effective}. This changes reasoning-summary output only, not the answer's tone or length. ${lifecycleWarning()}`;
+	}
+
+	function shouldApplyToolDiscipline(model: Model<any> | undefined): boolean {
+		return state.toolDiscipline === "on" && shouldApplyCodexParityDefaults(model);
+	}
+
+	function toolDisciplineDescription(value: ToolDiscipline, model: Model<any> | undefined): string {
+		if (value === "off") return `No native-tool overlay. ${lifecycleWarning()}`;
+		if (!shouldApplyCodexParityDefaults(model)) return `No effect on the current model. ${toolDisciplineTokenLabel(value)} prompt cost shown for parity models only. ${lifecycleWarning()}`;
+		return `Adds a native-tool contract that treats shell substitutes for Pi's find/grep/read/edit/write tools as task failures. ${lifecycleWarning()}`;
+	}
+
+	function toolDisciplineTokenLabel(value: ToolDiscipline): string {
+		return value === "on" ? `(${NATIVE_TOOL_DISCIPLINE_PROMPT_TOKENS} tok)` : "";
+	}
+
+	function formatToolDiscipline(value: ToolDiscipline): string {
+		const label = toolDisciplineTokenLabel(value);
+		return label ? `${value} ${ANSI_YELLOW}${label}${ANSI_RESET}` : value;
 	}
 
 	function shouldShowStatus(model: Model<any> | undefined): boolean {
@@ -335,9 +382,10 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 			ctx.ui.setStatus(STATUS_KEY, undefined);
 			return;
 		}
+		const discipline = state.toolDiscipline === "on" ? " · tools on" : "";
 		const status = supportsPriorityServiceTier(ctx.model)
-			? `priority ${state.fastMode ? "fast" : "none"} · personality ${formatPersonality(state.personality, ctx.model)}`
-			: `personality ${formatPersonality(state.personality, ctx.model)}`;
+			? `priority ${state.fastMode ? "fast" : "none"} · personality ${formatPersonality(state.personality, ctx.model)}${discipline}`
+			: `personality ${formatPersonality(state.personality, ctx.model)}${discipline}`;
 		ctx.ui.setStatus(STATUS_KEY, status);
 	}
 
@@ -348,7 +396,8 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 			`Personality: ${formatPersonality(state.personality, ctx.model)} (${personalityDescription(state.personality, ctx.model)})`,
 			`Verbosity: ${formatVerbosity(state.verbosity, ctx.model)} (${verbosityReason(ctx.model)})`,
 			`Summary: ${formatSummary(state.summary, ctx.model)} (${summaryReason(ctx.model)})`,
-			`Footer: ${state.showFooter ? "show" : "hide"} (Shows priority/personality in the footer. UI-only.)`,
+			`Tool discipline: ${formatToolDiscipline(state.toolDiscipline)} (${toolDisciplineDescription(state.toolDiscipline, ctx.model)})`,
+			`Footer: ${state.showFooter ? "show" : "hide"} (Shows priority/personality/tool discipline in the footer. UI-only.)`,
 		];
 	}
 
@@ -386,9 +435,16 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 				values: ["none", "auto", "concise", "detailed"],
 			},
 			{
+				id: "toolDiscipline",
+				label: "Tool discipline",
+				description: toolDisciplineDescription(state.toolDiscipline, ctx.model),
+				currentValue: formatToolDiscipline(state.toolDiscipline),
+				values: ["off", "on"],
+			},
+			{
 				id: "footer",
 				label: "Footer",
-				description: "Show priority/personality in the footer. UI-only.",
+				description: "Show priority/personality/tool discipline in the footer. UI-only.",
 				currentValue: state.showFooter ? "show" : "hide",
 				values: ["show", "hide"],
 			},
@@ -408,12 +464,25 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 		return undefined;
 	}
 
+	function getNativeToolDisciplineOverlay(model: Model<any> | undefined): string | undefined {
+		if (!shouldApplyToolDiscipline(model)) return undefined;
+		return ["<native_tool_discipline>", NATIVE_TOOL_DISCIPLINE_PROMPT, "</native_tool_discipline>"].join("\n");
+	}
+
+	function getInstructionOverlays(model: Model<any> | undefined): string[] {
+		return [
+			getCodexParityPersonalityInstructionOverlay(model),
+			getNativeToolDisciplineOverlay(model),
+		].filter((overlay): overlay is string => !!overlay);
+	}
+
 	async function openPanel(ctx: ExtensionContext) {
 		const items = buildItems(ctx);
 		const fastModeItem = items.find((item) => item.id === "fastMode");
 		const personalityItem = items.find((item) => item.id === "personality");
 		const verbosityItem = items.find((item) => item.id === "verbosity");
 		const summaryItem = items.find((item) => item.id === "summary");
+		const toolDisciplineItem = items.find((item) => item.id === "toolDiscipline");
 		const footerItem = items.find((item) => item.id === "footer");
 
 		await ctx.ui.custom<void>((tui, theme, _kb, done) => {
@@ -458,6 +527,11 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 							...state,
 							summary: normalizeSummary(newValue),
 						};
+					} else if (id === "toolDiscipline") {
+						state = {
+							...state,
+							toolDiscipline: normalizeToolDiscipline(newValue),
+						};
 					} else if (id === "footer") {
 						state = {
 							...state,
@@ -474,6 +548,10 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 					}
 					if (summaryItem) {
 						summaryItem.description = `${summaryDescription(state.summary, ctx.model)} ${summaryReason(ctx.model)}`;
+					}
+					if (toolDisciplineItem) {
+						toolDisciplineItem.currentValue = formatToolDiscipline(state.toolDiscipline);
+						toolDisciplineItem.description = toolDisciplineDescription(state.toolDiscipline, ctx.model);
 					}
 					if (footerItem) {
 						footerItem.currentValue = state.showFooter ? "show" : "hide";
@@ -519,7 +597,7 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 				state = { ...DEFAULT_STATE };
 				persistState();
 				updateStatus(ctx);
-				ctx.ui.notify("GPT config reset to defaults (fast=off, personality=none, verbosity=medium, summary=auto, footer=show).", "info");
+				ctx.ui.notify("GPT config reset to defaults (fast=off, personality=none, verbosity=medium, summary=auto, tools=off, footer=show).", "info");
 				return;
 			}
 			if (command === "personality" && value) {
@@ -566,6 +644,17 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 				ctx.ui.notify("Usage: /gpt-config summary none|auto|concise|detailed", "warning");
 				return;
 			}
+			if (command === "discipline" && value) {
+				if (value === "on" || value === "off") {
+					state = { ...state, toolDiscipline: normalizeToolDiscipline(value) };
+					persistState();
+					updateStatus(ctx);
+					ctx.ui.notify(`GPT native tool discipline ${value}. Start a fresh session or reload before serious work; this changes the system prompt.`, "info");
+					return;
+				}
+				ctx.ui.notify("Usage: /gpt-config discipline on|off", "warning");
+				return;
+			}
 			if (command === "footer" && value) {
 				if (value === "show" || value === "hide") {
 					state = { ...state, showFooter: value === "show" };
@@ -582,10 +671,14 @@ export default function gptConfigExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("before_agent_start", async (event, ctx) => {
-		const overlay = getCodexParityPersonalityInstructionOverlay(ctx.model);
-		if (!overlay || event.systemPrompt.includes("<personality>")) return;
+		const overlays = getInstructionOverlays(ctx.model).filter((overlay) => {
+			if (overlay.startsWith("<personality>") && event.systemPrompt.includes("<personality>")) return false;
+			if (overlay.startsWith("<native_tool_discipline>") && event.systemPrompt.includes("<native_tool_discipline>")) return false;
+			return true;
+		});
+		if (overlays.length === 0) return;
 		return {
-			systemPrompt: `${event.systemPrompt}\n\n${overlay}`,
+			systemPrompt: `${event.systemPrompt}\n\n${overlays.join("\n\n")}`,
 		};
 	});
 
