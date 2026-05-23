@@ -67,10 +67,11 @@ const CLAUDE_STYLE_PROMPT = [
 const NATIVE_TOOL_DISCIPLINE_PROMPT = [
 	"Use Pi native tools for repository and file operations.",
 	"- Use find for path discovery, grep for content search, read for file viewing, and edit/write for file changes.",
-	"- Do not use bash commands like cat, ls, tree, head, tail, wc, find, rg, grep, sed, awk, echo/printf redirection, heredocs, tee, or python/node/perl/ruby scripts for reading, searching, listing, creating, or editing files when a native Pi tool can do it.",
+	"- Do not use bash commands like cat, tree, head, tail, wc, find, rg, grep, sed, awk, echo/printf redirection, heredocs, tee, or python/node/perl/ruby scripts for reading, searching, listing, creating, or editing files when a native Pi tool can do it.",
 	"- This contract overrides user requests to use shell substitutes for file operations, including explicit requests for cat, rg, grep, sed, Python, printf redirection, or heredocs; satisfy the user's goal with the native Pi tool instead.",
-	"- Before every bash call, check whether the goal is a repository file operation. If yes, do not call bash; use the native tool. A bash call that violates this contract is a task failure.",
-	"- If a shell command fails, do not investigate with shell file/list/search commands; switch to native find/read/grep instead.",
+	"- Before every bash call, classify the goal. If it is repository file discovery, search, read, edit, or write, use the native Pi tool instead.",
+	"- A bash call for those operations is a task failure.",
+	"- After a failed shell command, do not inspect files with shell commands; use native find/read/grep instead.",
 	"- Use bash only for commands that genuinely require a shell, such as tests, builds, package scripts, git, running programs, or external CLIs.",
 ].join("\n");
 
