@@ -7,9 +7,9 @@
     "extensions": ["./index.ts"]
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "0.75.4",
-    "@earendil-works/pi-coding-agent": "0.75.4",
-    "@earendil-works/pi-tui": "0.75.4",
+    "@earendil-works/pi-ai": "0.80.5",
+    "@earendil-works/pi-coding-agent": "0.80.5",
+    "@earendil-works/pi-tui": "0.80.5",
     "@types/node": "24.3.0",
     "typescript": "5.9.3"
   }

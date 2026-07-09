@@ -11,13 +11,16 @@
 
 https://github.com/user-attachments/assets/3e29b8f1-1b48-4a51-89c0-0c070c83cd70
 
-Adds a `/gpt-config` command to pi for **Codex-parity settings** on four models only:
+Adds a `/gpt-config` command to pi for **Codex-parity settings** on these models only:
 - `gpt-5.3-codex`
 - `gpt-5.4`
 - `gpt-5.4-mini`
 - `gpt-5.5`
+- `gpt-5.6-sol`
+- `gpt-5.6-terra`
+- `gpt-5.6-luna`
 
-Outside those four models, every setting in this extension is a **no-op**.
+Outside these models, every setting in this extension is a **no-op**.
 
 ## Install
 
@@ -26,7 +29,7 @@ pi install git:github.com/edxeth/pi-gpt-config
 ```
 
 ## Controls
-- `Fast mode`: `on`, `off` (only shown for `gpt-5.3-codex`, `gpt-5.4`, and `gpt-5.5`)
+- `Fast mode`: `on`, `off` (shown for `gpt-5.3-codex`, `gpt-5.4`, `gpt-5.5`, `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna`)
 - `Personality`: `none`, `friendly`, `pragmatic`, `claude`
 - `Verbosity`: `low`, `medium`, `high`
 - `Reasoning summary`: `none`, `auto`, `concise`, `detailed`
@@ -119,12 +122,12 @@ Legacy state from `~/.pi/agent/cache/pi-gpt-config/state.json` is migrated on lo
 - The panel explains what each setting does.
 - The panel hides `Fast mode` on `gpt-5.4-mini`.
 - The footer shows:
-  - `priority`, `personality`, and tool discipline status on `gpt-5.3-codex`, `gpt-5.4`, and `gpt-5.5`
+  - `priority`, `personality`, and tool discipline status on `gpt-5.3-codex`, `gpt-5.4`, `gpt-5.5`, `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna`
   - `personality` and tool discipline status on `gpt-5.4-mini`
-- The footer is only shown on the four parity models.
+- The footer is only shown on the supported parity models.
 
 ## Notes
-- This extension mixes native API controls (`service_tier`, `text.verbosity`, `reasoning.summary`) with prompt/tool policy overlays (`personality`, `toolDiscipline`). `gpt-5.4-mini` gets the verbosity/summary/personality/tool-discipline behavior but not `service_tier`.
+- This extension mixes native API controls (`service_tier`, `text.verbosity`, `reasoning.summary`) with prompt/tool policy overlays (`personality`, `toolDiscipline`). `gpt-5.4-mini` gets the verbosity/summary/personality/tool-discipline behavior but not `service_tier`; all three GPT-5.6 models support every existing extension setting.
 - `personality=none` means no extra prompt overlay.
 - `personality=claude` is a compact Claude Code-style overlay, not provider-native Claude mode or full Claude Code prompt parity.
 - Personality and tool-discipline overlays are intentionally small deltas instead of full alternate system prompts, preserving pi's harness instructions and reducing repeated prompt-token cost.
