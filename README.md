@@ -19,6 +19,7 @@ Adds a `/gpt-config` command to pi for **Codex-parity settings** on these models
 - `gpt-5.6-sol`
 - `gpt-5.6-terra`
 - `gpt-5.6-luna`
+- `gpt-6-astra`
 
 Outside these models, every setting in this extension is a **no-op**.
 
@@ -29,7 +30,7 @@ pi install git:github.com/edxeth/pi-gpt-config
 ```
 
 ## Controls
-- `Fast mode`: `on`, `off` (shown for `gpt-5.3-codex`, `gpt-5.4`, `gpt-5.5`, `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna`)
+- `Fast mode`: `on`, `off` (shown for `gpt-5.3-codex`, `gpt-5.4`, `gpt-5.5`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, and `gpt-6-astra`)
 - `Personality`: `none`, `friendly`, `pragmatic`, `claude`
 - `Verbosity`: `low`, `medium`, `high`
 - `Reasoning summary`: `none`, `auto`, `concise`, `detailed`
@@ -122,12 +123,12 @@ Legacy state from `~/.pi/agent/cache/pi-gpt-config/state.json` is migrated on lo
 - The panel explains what each setting does.
 - The panel hides `Fast mode` on `gpt-5.4-mini`.
 - The footer shows:
-  - `priority`, `personality`, and tool discipline status on `gpt-5.3-codex`, `gpt-5.4`, `gpt-5.5`, `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna`
+  - `priority`, `personality`, and tool discipline status on `gpt-5.3-codex`, `gpt-5.4`, `gpt-5.5`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, and `gpt-6-astra`
   - `personality` and tool discipline status on `gpt-5.4-mini`
 - The footer is only shown on the supported parity models.
 
 ## Notes
-- This extension mixes native API controls (`service_tier`, `text.verbosity`, `reasoning.summary`) with prompt/tool policy overlays (`personality`, `toolDiscipline`). `gpt-5.4-mini` gets the verbosity/summary/personality/tool-discipline behavior but not `service_tier`; all three GPT-5.6 models support every existing extension setting.
+- This extension mixes native API controls (`service_tier`, `text.verbosity`, `reasoning.summary`) with prompt/tool policy overlays (`personality`, `toolDiscipline`). `gpt-5.4-mini` gets the verbosity/summary/personality/tool-discipline behavior but not `service_tier`; all three GPT-5.6 models and `gpt-6-astra` support every existing extension setting.
 - `personality=none` means no extra prompt overlay.
 - `personality=claude` is a compact Claude Code-style overlay, not provider-native Claude mode or full Claude Code prompt parity.
 - Personality and tool-discipline overlays are intentionally small deltas instead of full alternate system prompts, preserving pi's harness instructions and reducing repeated prompt-token cost.

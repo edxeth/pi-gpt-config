@@ -43,6 +43,7 @@ const CODEX_PARITY_MODEL_IDS = new Set([
 	"gpt-5.6-sol",
 	"gpt-5.6-terra",
 	"gpt-5.6-luna",
+	"gpt-6-astra",
 ]);
 const PRIORITY_SERVICE_TIER_MODEL_IDS = new Set([
 	"gpt-5.3-codex",
@@ -51,6 +52,7 @@ const PRIORITY_SERVICE_TIER_MODEL_IDS = new Set([
 	"gpt-5.6-sol",
 	"gpt-5.6-terra",
 	"gpt-5.6-luna",
+	"gpt-6-astra",
 ]);
 const ANSI_YELLOW = "\u001b[33m";
 const ANSI_RESET = "\u001b[0m";
